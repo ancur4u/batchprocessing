@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:covid-19data-tracking-api="http://www.mulesoft.org/schema/mule/covid-19data-tracking-api"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:batch="http://www.mulesoft.org/schema/mule/batch" xmlns:file="http://www.mulesoft.org/schema/mule/file" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd
+http://www.mulesoft.org/schema/mule/batch http://www.mulesoft.org/schema/mule/batch/current/mule-batch.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<flow name="batchprocessingFlow" doc:id="44e40814-9a35-4f5b-89c1-9554ec1eda4e">
+		<file:listener doc:name="On New or Updated File" doc:id="e5a0ca9f-f064-4df5-bb9a-95ce2f8521c8" config-ref="File_Config" directory="batchprocessing/src/main/resources/input" moveToDirectory="/Users/ankurparashar/AnypointStudio/studio-workspace/batchprocessing/src/main/resources/output" renameTo="processed.csv">
+			<scheduling-strategy >
+				<fixed-frequency />
+			</scheduling-strategy>
+			<file:matcher filenamePattern="batch.csv" />
+		</file:listener>
+		<logger level="INFO" doc:name="Logger" doc:id="a3e67f4d-f4af-4916-a6ef-69ca7f20e820" message='#["BatchProcessing Flow initiated.."]'/>
+		<ee:transform doc:name="Transform Message" doc:id="260e5192-758c-4cfd-9e9a-8ae447173f6f" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<batch:job jobName="batchprocessingBatch_Job" doc:id="f6c7d13e-2152-476b-87c7-f5bdb3ee18f2" blockSize="500">
+			<batch:process-records >
+				<batch:step name="Batch_Step" doc:id="040cd24f-d67a-4a8e-92db-d94a73bf30fe" acceptExpression="#[((payload.policyID) mod 2)==0 ]">
+					<logger level="INFO" doc:name="Logger" doc:id="e2723cdf-ac9a-4cfd-a776-e26bc2b6562d" message='#["Batch step started.."]'/>
+					<file:write doc:name="Write" doc:id="7b29b757-5f94-40dc-bca3-53ff863c339e" config-ref="File_Config" path='#["batchprocessing/src/main/resources/processed/" ++ payload.policyID ++".csv"]'>
+						<file:content ><![CDATA[#[%dw 2.0
+output application/csv
+---
+payload]]]></file:content>
+					</file:write>
+					<batch:aggregator doc:name="Batch Aggregator" doc:id="05f68c76-8378-429a-9236-67801a4841b6" size="200">
+						<logger level="INFO" doc:name="Logger" doc:id="d37824ed-b489-4255-a7df-b2f5f502c626" message='#["Batch aggregator.."]'/>
+						<file:write doc:name="Write" doc:id="296f47f4-cf47-4799-a747-04c490dfc751" config-ref="File_Config" path='#["batchprocessing/src/main/resources/aggregator/" ++ now () as String {format: "dd-MMM-yyyy hh:mm:ss:SSS"} ++ ".csv"]'>
+							<file:content ><![CDATA[#[%dw 2.0
+output application/csv
+---
+payload]]]></file:content>
+						</file:write>
+					</batch:aggregator>
+				</batch:step>
+			</batch:process-records>
+			<batch:on-complete >
+				<logger level="INFO" doc:name="Logger" doc:id="b7b72ff7-65a0-43eb-8cd9-5d90ada38d24" message="#[%dw 2.0
+output application/json
+---
+{
+  InstanceId: payload.batchJobInstanceId,
+  TimeMillis: payload.elapsedTimeInMillis,
+  LoadedRecords: payload.loadedRecords,
+  FailedRecords: payload.failedRecords,
+  ProcessedRecords: payload.processedRecords,
+  SuccessfulRecords: payload.successfulRecords,
+  TotalRecords: payload.totalRecords,
+  isFailedOnInputPhase: payload.failedOnInputPhase,
+  failedOnLoadingPhase: payload.failedOnLoadingPhase,
+  failedOnCompletePhase: payload.failedOnCompletePhase
+}]"/>
+			</batch:on-complete>
+		</batch:job>
+	</flow>
+</mule>
